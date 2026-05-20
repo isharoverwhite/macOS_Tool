@@ -39,6 +39,18 @@ tmp = os.environ['NPKG_TMP']
 mode = sys.argv[1]
 project_dir = sys.argv[2]
 
+def semver_gt(v1, v2):
+    """True if v1 > v2 by numeric segment comparison."""
+    try:
+        p1 = [int(x) for x in v1.split('.')]
+        p2 = [int(x) for x in v2.split('.')]
+        n = max(len(p1), len(p2))
+        p1 += [0] * (n - len(p1))
+        p2 += [0] * (n - len(p2))
+        return p1 > p2
+    except Exception:
+        return v1 > v2
+
 try:
     with open(f'{tmp}/list.json') as f:
         list_data = json.load(f)
@@ -68,7 +80,12 @@ for name in sorted(list_data.get('dependencies', {})):
     installed = info.get('version', '?')
     if name in outdated_data:
         latest = outdated_data[name].get('latest', '?')
-        status = 'outdated'
+        # Only outdated if latest is strictly newer than installed
+        if semver_gt(latest, installed):
+            status = 'outdated'
+        else:
+            latest = installed
+            status = 'ok'
     else:
         latest = installed
         status = 'ok'
@@ -316,18 +333,17 @@ while true; do
     display_table "$selected"
 
     read -rsn1 key
+    [[ -z "$key" ]] && continue
+    if [[ "$key" == $'\x1b' ]]; then
+        key_rest=""
+        read -rsn2 -t 1 key_rest 2>/dev/null || true
+        if   [[ "${key_rest}" == "[A" ]]; then
+            [ "$local_total" -gt 0 ] && selected=$(( (selected - 1 + local_total) % local_total ))
+        elif [[ "${key_rest}" == "[B" ]]; then
+            [ "$local_total" -gt 0 ] && selected=$(( (selected + 1) % local_total ))
+        fi
+    else
     case "$key" in
-        $'\x1b')
-            read -rsn2 -t 0.1 rest 2>/dev/null || true
-            case "$rest" in
-                "[A")
-                    [ "$local_total" -gt 0 ] && selected=$(( (selected - 1 + local_total) % local_total ))
-                    ;;
-                "[B")
-                    [ "$local_total" -gt 0 ] && selected=$(( (selected + 1) % local_total ))
-                    ;;
-            esac
-            ;;
         " ")
             if [ "$local_total" -gt 0 ]; then
                 if [ "${PKG_MARKED[$selected]+_}" ]; then
@@ -354,4 +370,5 @@ while true; do
             fi
             ;;
     esac
+    fi
 done
