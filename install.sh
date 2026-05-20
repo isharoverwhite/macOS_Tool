@@ -84,6 +84,26 @@ install_etool() {
     info "Dùng: etool check | etool update"
 }
 
+# ─── TOOL: NPM PACKAGE MANAGER ───────────────────────────────────────────────
+
+install_npkg() {
+    echo -e "\n${BOLD}[npkg] NPM Package Manager${NC}"
+
+    local src="$SCRIPT_DIR/npkg.sh"
+    local dst="$INSTALL_DIR/npkg"
+
+    if [ ! -f "$src" ]; then
+        error "Không tìm thấy npkg.sh trong $SCRIPT_DIR"
+        return 1
+    fi
+
+    ensure_install_dir
+    cp "$src" "$dst"
+    chmod +x "$dst"
+    success "Đã cài: $dst"
+    info "Dùng: npkg (trong thư mục project) hoặc npkg --global"
+}
+
 # ─── TEMPLATE CHO TOOL MỚI ────────────────────────────────────────────────────
 # Khi thêm tool mới, tạo một hàm install_<toolname>() theo mẫu dưới đây
 # rồi thêm nó vào install_all() và vào argument parsing bên dưới.
@@ -102,6 +122,7 @@ install_etool() {
 install_all() {
     install_sandbox
     install_etool
+    install_npkg
     # Thêm install_<toolname> ở đây khi có tool mới
 }
 
@@ -121,6 +142,7 @@ print_usage() {
     echo -e "  ${CYAN}./install.sh${NC}                  — Cài tất cả tools"
     echo -e "  ${CYAN}./install.sh --only sandbox${NC}   — Chỉ cài Sandbox Manager"
     echo -e "  ${CYAN}./install.sh --only etool${NC}     — Chỉ cài etool updater"
+    echo -e "  ${CYAN}./install.sh --only npkg${NC}      — Chỉ cài NPM Package Manager"
     echo -e "  ${CYAN}./install.sh --help${NC}           — Hiển thị trợ giúp này"
 }
 
@@ -132,6 +154,7 @@ case "${1:-}" in
         case "$tool" in
             sandbox) install_sandbox ;;
             etool)   install_etool ;;
+            npkg)    install_npkg ;;
             *)
                 error "Tool không hợp lệ: '$tool'"
                 echo ""

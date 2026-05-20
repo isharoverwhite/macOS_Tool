@@ -23,6 +23,7 @@ error()   { echo -e "${RED}  ✘${NC} $*"; }
 # Add new tools here when expanding the collection.
 TOOL_REGISTRY=(
     "Sandbox Shell Manager|sandbox-shell.sh|sbox"
+    "NPM Package Manager|npkg.sh|npkg"
     "etool (self)|update.sh|etool"
 )
 
