@@ -1,4 +1,5 @@
 #!/bin/bash
+# version: 1.0.0
 
 # --- CONFIGURATION ---
 SANDBOX_DIR="$HOME/.sandbox"

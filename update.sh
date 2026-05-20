@@ -1,7 +1,9 @@
 #!/bin/bash
+# version: 1.0.0
 # etool — macOS Tool Collection Updater
 # Installed at: ~/.local/bin/etool
-# Compares locally installed tools against the latest version on GitHub.
+# check: reads only line 2 of each remote script to compare versions (lightweight)
+# update: downloads full file, shows diff, confirms before overwriting
 # Usage: etool | etool check | etool update [tool]
 
 set -uo pipefail
@@ -26,11 +28,24 @@ TOOL_REGISTRY=(
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
 
-# Download a file from GitHub to a temp path. Prints temp path on success, empty on failure.
-fetch_remote() {
-    local repo_file="$1"
+# Read version from line 2 of a local file: "# version: X.Y.Z" → "X.Y.Z"
+local_version() {
+    sed -n '2p' "$1" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "?"
+}
+
+# Fetch line 2 of a remote script and extract version. Prints empty string on failure.
+# curl pipes into head -2 — connection is closed after 2 lines, so minimal data is transferred.
+remote_version() {
+    curl -fsSL --max-time 10 "$REPO_RAW/$1" 2>/dev/null \
+        | head -2 | tail -1 \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' \
+        || echo ""
+}
+
+# Download full file to a temp path. Prints temp path on success, empty on failure.
+fetch_remote_full() {
     local tmp; tmp=$(mktemp /tmp/etool_XXXXXX)
-    if curl -fsSL --max-time 15 "$REPO_RAW/$repo_file" -o "$tmp" 2>/dev/null; then
+    if curl -fsSL --max-time 15 "$REPO_RAW/$1" -o "$tmp" 2>/dev/null; then
         echo "$tmp"
     else
         rm -f "$tmp"
@@ -38,13 +53,9 @@ fetch_remote() {
     fi
 }
 
-files_differ() { ! diff -q "$1" "$2" > /dev/null 2>&1; }
-
-# Print a colored diff between the installed file and the remote version.
+# Print a colored diff between installed file and remote temp file.
 show_diff() {
-    local installed="$1"
-    local remote_tmp="$2"
-
+    local installed="$1" remote_tmp="$2"
     local added removed
     added=$(diff   "$installed" "$remote_tmp" | grep -c "^>" 2>/dev/null || true)
     removed=$(diff "$installed" "$remote_tmp" | grep -c "^<" 2>/dev/null || true)
@@ -52,9 +63,7 @@ show_diff() {
     echo -e "  ${DIM}──────────────────────────────────────────────────────${NC}"
 
     diff --color=always "$installed" "$remote_tmp" 2>/dev/null \
-        | grep -v "^---\|^+++" \
-        | head -30 \
-        | sed 's/^/    /' \
+        | grep -v "^---\|^+++" | head -30 | sed 's/^/    /' \
     || diff "$installed" "$remote_tmp" \
         | head -30 \
         | sed "s/^>/$(printf '\033[0;32m')>$(printf '\033[0m')/;s/^</$(printf '\033[0;31m')<$(printf '\033[0m')/" \
@@ -78,25 +87,26 @@ cmd_check() {
         local installed="$INSTALL_DIR/$bin_name"
 
         if [ ! -f "$installed" ]; then
-            echo -e "  ${DIM}[--]${NC} ${BOLD}$display_name${NC}  —  not installed"
+            echo -e "  ${DIM}[--]${NC} ${BOLD}$bin_name${NC}  —  not installed"
             continue
         fi
 
-        info "Checking $display_name..."
-        local remote_tmp; remote_tmp=$(fetch_remote "$repo_file")
+        local lver; lver=$(local_version "$installed")
+        info "Checking $display_name  (local: v${lver})..."
 
-        if [ -z "$remote_tmp" ]; then
-            echo -e "  ${RED}[??]${NC} ${BOLD}$display_name${NC}  —  could not reach GitHub"
+        local rver; rver=$(remote_version "$repo_file")
+
+        if [ -z "$rver" ]; then
+            echo -e "  ${RED}[??]${NC} ${BOLD}$bin_name${NC}  —  could not reach GitHub"
             continue
         fi
 
-        if files_differ "$installed" "$remote_tmp"; then
-            echo -e "  ${YELLOW}[!!]${NC} ${BOLD}$display_name${NC}  —  update available"
+        if [ "$lver" != "$rver" ]; then
+            echo -e "  ${YELLOW}[!!]${NC} ${BOLD}$bin_name${NC}  —  update available  ${DIM}v${lver} → v${rver}${NC}"
             any_outdated=true
         else
-            echo -e "  ${GREEN}[OK]${NC} ${BOLD}$display_name${NC}  —  up to date"
+            echo -e "  ${GREEN}[OK]${NC} ${BOLD}$bin_name${NC}  —  up to date  ${DIM}(v${lver})${NC}"
         fi
-        rm -f "$remote_tmp"
     done
 
     echo ""
@@ -116,8 +126,9 @@ cmd_update() {
         [[ -n "$filter" && "$bin_name" != "$filter" ]] && continue
 
         local installed="$INSTALL_DIR/$bin_name"
+        local lver; lver=$([ -f "$installed" ] && local_version "$installed" || echo "?")
 
-        echo -e "${BOLD}[$bin_name]${NC} $display_name"
+        echo -e "${BOLD}[$bin_name]${NC} $display_name  ${DIM}(v${lver})${NC}"
 
         if [ ! -f "$installed" ]; then
             warn "Not installed. Run ./install.sh first."
@@ -125,22 +136,25 @@ cmd_update() {
         fi
 
         info "Fetching latest from GitHub..."
-        local remote_tmp; remote_tmp=$(fetch_remote "$repo_file")
+        local remote_tmp; remote_tmp=$(fetch_remote_full "$repo_file")
 
         if [ -z "$remote_tmp" ]; then
             error "Could not reach GitHub. Check your internet connection."
             echo ""; continue
         fi
 
-        if ! files_differ "$installed" "$remote_tmp"; then
-            success "Already up to date — skipping"
+        local rver; rver=$(local_version "$remote_tmp")
+
+        if [ "$lver" = "$rver" ]; then
+            success "Already up to date — skipping  ${DIM}(v${lver})${NC}"
             rm -f "$remote_tmp"; echo ""; continue
         fi
 
+        echo -e "  ${YELLOW}v${lver} → v${rver}${NC}"
         show_diff "$installed" "$remote_tmp"
         echo ""
 
-        echo -ne "  Update ${BOLD}$display_name${NC}? [y/N] "
+        echo -ne "  Update ${BOLD}$display_name${NC} to v${rver}? [y/N] "
         read -r confirm || true
 
         if [[ "$confirm" =~ ^[yY]$ ]]; then
@@ -148,7 +162,7 @@ cmd_update() {
             cp "$remote_tmp" "$installed"
             chmod +x "$installed"
             updated=$(( updated + 1 ))
-            success "Updated  ${DIM}(backup: ${installed}.bak)${NC}"
+            success "Updated  v${lver} → v${rver}  ${DIM}(backup: ${installed}.bak)${NC}"
         else
             info "Skipped"
         fi
@@ -186,9 +200,10 @@ print_usage() {
         IFS='|' read -r display_name _ bin_name <<< "$entry"
         local installed="$INSTALL_DIR/$bin_name"
         if [ -f "$installed" ]; then
-            echo -e "    ${GREEN}✔${NC}  $bin_name  —  $display_name"
+            local ver; ver=$(local_version "$installed")
+            echo -e "    ${GREEN}✔${NC}  ${BOLD}$bin_name${NC}  v${ver}  —  $display_name"
         else
-            echo -e "    ${DIM}–${NC}  $bin_name  —  $display_name  ${DIM}(not installed)${NC}"
+            echo -e "    ${DIM}–   $bin_name  —  $display_name  (not installed)${NC}"
         fi
     done
 }
