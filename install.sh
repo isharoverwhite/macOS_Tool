@@ -64,6 +64,26 @@ install_sandbox() {
     echo -e "  ${CYAN}source ~/.zshrc && sbox${NC}"
 }
 
+# ─── TOOL: ETOOL (UPDATER) ────────────────────────────────────────────────────
+
+install_etool() {
+    echo -e "\n${BOLD}[etool] macOS Tool Updater${NC}"
+
+    local src="$SCRIPT_DIR/update.sh"
+    local dst="$INSTALL_DIR/etool"
+
+    if [ ! -f "$src" ]; then
+        error "Không tìm thấy update.sh trong $SCRIPT_DIR"
+        return 1
+    fi
+
+    ensure_install_dir
+    cp "$src" "$dst"
+    chmod +x "$dst"
+    success "Đã cài: $dst"
+    info "Dùng: etool check | etool update"
+}
+
 # ─── TEMPLATE CHO TOOL MỚI ────────────────────────────────────────────────────
 # Khi thêm tool mới, tạo một hàm install_<toolname>() theo mẫu dưới đây
 # rồi thêm nó vào install_all() và vào argument parsing bên dưới.
@@ -81,6 +101,7 @@ install_sandbox() {
 
 install_all() {
     install_sandbox
+    install_etool
     # Thêm install_<toolname> ở đây khi có tool mới
 }
 
@@ -99,6 +120,7 @@ print_usage() {
     echo -e "Cách dùng:"
     echo -e "  ${CYAN}./install.sh${NC}                  — Cài tất cả tools"
     echo -e "  ${CYAN}./install.sh --only sandbox${NC}   — Chỉ cài Sandbox Manager"
+    echo -e "  ${CYAN}./install.sh --only etool${NC}     — Chỉ cài etool updater"
     echo -e "  ${CYAN}./install.sh --help${NC}           — Hiển thị trợ giúp này"
 }
 
@@ -109,6 +131,7 @@ case "${1:-}" in
         tool="${2:-}"
         case "$tool" in
             sandbox) install_sandbox ;;
+            etool)   install_etool ;;
             *)
                 error "Tool không hợp lệ: '$tool'"
                 echo ""
