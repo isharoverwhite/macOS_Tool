@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/bin"
 ZSHRC="$HOME/.zshrc"
 
-TOTAL_STEPS=12
+TOTAL_STEPS=13
 CURRENT_STEP=0
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -204,6 +204,50 @@ step_npkg() {
     success "Đã cài → $INSTALL_DIR/npkg"
 }
 
+step_terminal() {
+    step "Terminal.app — Basic profile"
+
+    local src="$SCRIPT_DIR/terminal/Basic.terminal"
+    if [[ ! -f "$src" ]]; then
+        error "Không tìm thấy terminal/Basic.terminal trong $SCRIPT_DIR"
+        exit 1
+    fi
+
+    # Dùng Python để merge profile vào com.apple.Terminal.plist
+    # (giữ nguyên binary NSArchiver data cho font/color)
+    python3 - "$src" << 'PYEOF'
+import plistlib, os, sys
+
+src = sys.argv[1]
+prefs_path = os.path.expanduser("~/Library/Preferences/com.apple.Terminal.plist")
+
+with open(src, 'rb') as f:
+    profile = plistlib.load(f)
+
+if os.path.exists(prefs_path):
+    with open(prefs_path, 'rb') as f:
+        prefs = plistlib.load(f)
+else:
+    prefs = {}
+
+if 'Window Settings' not in prefs:
+    prefs['Window Settings'] = {}
+
+prefs['Window Settings']['Basic'] = profile
+prefs['Default Window Settings'] = 'Basic'
+prefs['Startup Window Settings'] = 'Basic'
+
+with open(prefs_path, 'wb') as f:
+    plistlib.dump(prefs, f, fmt=plistlib.FMT_BINARY)
+PYEOF
+
+    # Flush preferences cache để Terminal.app nhận cấu hình mới
+    killall cfprefsd 2>/dev/null || true
+
+    success "Profile 'Basic' đã import → Terminal.app"
+    info  "Font: SFMono-Regular 11px · Background: #D4D4D4 · Option=Meta · Bell=off"
+}
+
 step_warp() {
     step "Warp terminal config"
 
@@ -248,6 +292,7 @@ install_all() {
     step_etool              # Bước 10
     step_npkg               # Bước 11
     step_warp               # Bước 12
+    step_terminal           # Bước 13
     # Thêm step_<toolname>() ở đây khi có tool mới (nhớ tăng TOTAL_STEPS)
 
     echo -e "\n${GREEN}${BOLD}"
@@ -281,6 +326,7 @@ print_usage() {
     echo -e "  ${CYAN}./install.sh --only etool${NC}      — Chỉ cài etool updater"
     echo -e "  ${CYAN}./install.sh --only npkg${NC}       — Chỉ cài NPM Package Manager"
     echo -e "  ${CYAN}./install.sh --only warp${NC}       — Chỉ copy Warp terminal config"
+    echo -e "  ${CYAN}./install.sh --only terminal${NC}   — Chỉ import Terminal.app profile"
     echo -e "  ${CYAN}./install.sh --help${NC}            — Hiển thị trợ giúp này"
 }
 
@@ -309,7 +355,8 @@ case "${1:-}" in
             sandbox) TOTAL_STEPS=1; step_sandbox ;;
             etool)   TOTAL_STEPS=1; step_etool ;;
             npkg)    TOTAL_STEPS=1; step_npkg ;;
-            warp)    TOTAL_STEPS=1; step_warp ;;
+            warp)     TOTAL_STEPS=1; step_warp ;;
+            terminal) TOTAL_STEPS=1; step_terminal ;;
             *)
                 error "Tool không hợp lệ: '${2:-}'"
                 echo ""
