@@ -1,0 +1,8 @@
+name = "New tab"
+
+[[panes]]
+id = "main"
+type = "terminal"
+directory = "__HOME__"
+
+[params]

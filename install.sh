@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/bin"
 ZSHRC="$HOME/.zshrc"
 
-TOTAL_STEPS=11
+TOTAL_STEPS=12
 CURRENT_STEP=0
 
 # ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -204,6 +204,35 @@ step_npkg() {
     success "Đã cài → $INSTALL_DIR/npkg"
 }
 
+step_warp() {
+    step "Warp terminal config"
+
+    # Nếu Warp chưa cài, gợi ý cài rồi bỏ qua bước này
+    if [[ ! -d "/Applications/Warp.app" ]]; then
+        warn "Warp chưa được cài. Bỏ qua config."
+        info "Cài Warp:  brew install --cask warp"
+        return 0
+    fi
+
+    local warp_cfg="$SCRIPT_DIR/warp"
+    if [[ ! -d "$warp_cfg" ]]; then
+        error "Không tìm thấy thư mục warp/ trong $SCRIPT_DIR"
+        exit 1
+    fi
+
+    mkdir -p "$HOME/.warp/tab_configs"
+
+    # settings.toml — copy thẳng, không có thông tin cá nhân
+    cp "$warp_cfg/settings.toml" "$HOME/.warp/settings.toml"
+    success "Đã copy settings.toml → ~/.warp/settings.toml"
+
+    # startup_config.toml — thay __HOME__ bằng $HOME thực tế
+    sed "s|__HOME__|$HOME|g" \
+        "$warp_cfg/tab_configs/startup_config.toml" \
+        > "$HOME/.warp/tab_configs/startup_config.toml"
+    success "Đã copy startup_config.toml → ~/.warp/tab_configs/startup_config.toml"
+}
+
 # ─── CÀI TẤT CẢ: 11 bước bắt buộc theo thứ tự ───────────────────────────────
 
 install_all() {
@@ -218,11 +247,12 @@ install_all() {
     step_sandbox            # Bước  9
     step_etool              # Bước 10
     step_npkg               # Bước 11
+    step_warp               # Bước 12
     # Thêm step_<toolname>() ở đây khi có tool mới (nhớ tăng TOTAL_STEPS)
 
     echo -e "\n${GREEN}${BOLD}"
     echo "╔══════════════════════════════════════════════════════════╗"
-    echo "║  ✔  Hoàn tất tất cả ${TOTAL_STEPS} bước!                            ║"
+    echo "║  ✔  Hoàn tất tất cả ${TOTAL_STEPS} bước!                           ║"
     echo "║                                                          ║"
     echo "║  Bước tiếp theo:                                         ║"
     echo "║    1. Mở terminal mới  (hoặc: exec zsh)                  ║"
@@ -250,6 +280,7 @@ print_usage() {
     echo -e "  ${CYAN}./install.sh --only sandbox${NC}    — Chỉ cài Sandbox Manager"
     echo -e "  ${CYAN}./install.sh --only etool${NC}      — Chỉ cài etool updater"
     echo -e "  ${CYAN}./install.sh --only npkg${NC}       — Chỉ cài NPM Package Manager"
+    echo -e "  ${CYAN}./install.sh --only warp${NC}       — Chỉ copy Warp terminal config"
     echo -e "  ${CYAN}./install.sh --help${NC}            — Hiển thị trợ giúp này"
 }
 
@@ -278,6 +309,7 @@ case "${1:-}" in
             sandbox) TOTAL_STEPS=1; step_sandbox ;;
             etool)   TOTAL_STEPS=1; step_etool ;;
             npkg)    TOTAL_STEPS=1; step_npkg ;;
+            warp)    TOTAL_STEPS=1; step_warp ;;
             *)
                 error "Tool không hợp lệ: '${2:-}'"
                 echo ""
